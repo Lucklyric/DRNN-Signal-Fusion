@@ -1,12 +1,21 @@
 import data_util
 import numpy as np
+
 # import tensorflow as tf
 
-train_data, test_data = data_util.prepare_data(2, 2)
+train_data, test_data = data_util.prepare_data(1, 1)
 # print (np.shape(train_data.get_batch()))
-data_x,data_y,_ = test_data.get_batch()
+# data_x,data_y,_ = test_data.get_batch()
 # print(np.reshape(train_data._inputs[0], [1, 1, 22]))
-print(train_data._outputs)
+# print(test_data.best_error_mean, test_data.worst_error_mean, test_data._s1_error_mean, test_data._s2_error_mean)
+# print(test_data.get_batch())
+# print(test_data.get_batch())
+print (train_data.cal_worst_best())
+# print (np.shape(train_data._inputs))
+# is_reset = 0
+# while is_reset == 0:
+#     print (train_data._start_cursor)
+#     _, _, is_reset = train_data.get_batch()
 # data_x,data_y,_ = test_data.get_batch()
 # print (data_x)
 # dx = tf.placeholder(shape=[None, 22], dtype=tf.float32)
