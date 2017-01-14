@@ -16,8 +16,8 @@ BATCH_SIZE = 1
 INPUT_SIZE = 22
 OUTPUT_SIZE = 2
 CELL_SIZE = 128
-LR = 0.000005
-IS_TRAINING = 0
+LR = 0.000025
+IS_TRAINING = 1
 
 
 class LSTMRNN(object):
@@ -57,13 +57,14 @@ class LSTMRNN(object):
         with tf.name_scope("Wx_plus_b"):
             l_in_y = tf.matmul(l_in_x, Ws_in) + bs_in
             self.l_in_y_shaped = tf.reshape(l_in_y, [-1, self._n_steps, self._cell_size], name="2_3D")
-        # first_hidden_layer = (tc.relu(l_in_y, 200))
-        # second_hidden_layer = (tc.relu(first_hidden_layer, 200))
-        # third_hidden_layer = tf.nn.dropout(tc.relu(second_hidden_layer, self._cell_size), self.keep_prob)
-        # self.third_hidden_layer_y = tf.reshape(third_hidden_layer, [-1, self._n_steps, self._cell_size], name="2_3D")
+            # first_hidden_layer = (tc.relu(l_in_y, 200))
+            # second_hidden_layer = (tc.relu(first_hidden_layer, 200))
+            # third_hidden_layer = tf.nn.dropout(tc.relu(second_hidden_layer, self._cell_size), self.keep_prob)
+            # self.third_hidden_layer_y = tf.reshape(third_hidden_layer, [-1, self._n_steps, self._cell_size], name="2_3D")
 
     def add_cell(self):
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self._cell_size, forget_bias=1.0, state_is_tuple=True)
+        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=0.6)
         self.stacked_lstm = rnn_cell.MultiRNNCell([lstm_cell] * 5,
                                                   state_is_tuple=True)
         with tf.name_scope('initial_state'):
