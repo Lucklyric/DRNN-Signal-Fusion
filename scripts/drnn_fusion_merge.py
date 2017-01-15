@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 1
+IS_TRAINING = 0
 START_LEARNING_RATE = 0.0005
 
 
@@ -89,18 +89,21 @@ class DRNNFusion(object):
                 self.cell_init_state_sensor_2, self.cell_outputs_sensor_2, self.cell_final_state_sensor_2 = \
                     self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_2, [-1, self.time_steps, self.rnn_cell_size]),
                                       scope)
+
         with tf.name_scope('merge'):
             merged_outputs = tf.concat(1, [self.reshape_to_flat(self.cell_outputs_sensor_1, [-1, self.rnn_cell_size]),
                                            self.reshape_to_flat(self.cell_outputs_sensor_2, [-1, self.rnn_cell_size])])
 
         with tf.name_scope('output_fc2'):
             with tf.variable_scope("fc2_variable"):
-                self.fc2 = tc.layers.fully_connected(merged_outputs, self.dense_size // 2, activation_fn=tf.nn.relu,
-                                                     weights_initializer=tc.initializers.xavier_initializer(),
-                                                     )
-                self.outputs = tc.layers.fully_connected(merged_outputs, self.output_size, activation_fn=None,
-                                                         weights_initializer=tc.initializers.xavier_initializer(),
-                                                         )
+                self.fc2 = tf.nn.dropout(
+                    tc.layers.fully_connected(merged_outputs, self.dense_size, activation_fn=tf.nn.relu,
+                                              weights_initializer=tc.initializers.xavier_initializer(),
+                                              ), self.keep_prob_dense_tf)
+                self.outputs = tf.nn.dropout(
+                    tc.layers.fully_connected(merged_outputs, self.output_size, activation_fn=tf.nn.relu,
+                                              weights_initializer=tc.initializers.xavier_initializer(),
+                                              ), self.keep_prob_dense_tf)
         with tf.name_scope('cost'):
             losses = tf.nn.seq2seq.sequence_loss(
                 [tf.reshape(self.outputs, [-1, self.output_size], name="reshape_pred")],
@@ -141,6 +144,7 @@ class DRNNFusion(object):
 
 def eval_accuracy(sess, model, data_set_instance, val_init_state):
     predict = []
+
     for j in range(len(data_set_instance._inputs)):
         if j == 0:
             feed_dict = {
@@ -163,7 +167,8 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state):
                 model.learning_rate: model.start_learning_rate
             }
         pred, val_state_1, val_state_2 = sess.run(
-            [model.pred, model.cell_final_state_sensor_1, model.cell_final_state_sensor_2], feed_dict=feed_dict)
+            [model.correct_pred, model.cell_final_state_sensor_1,
+             model.cell_final_state_sensor_2], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
     print("%f,%f" % (result, percent))
@@ -174,8 +179,10 @@ def run_train(sess, model, train_data):
     epoch = 0
     epoch_cost = 0
     epoch_count = 0
-    train_init_state = session.run(drnn_fusion_model_train.cell_init_state_sensor_1)
+    train_init_state = session.run(model.cell_init_state_sensor_1)
     state1 = state2 = None
+    merged = tf.summary.merge_all()
+    writer = tf.summary.FileWriter("logs", sess.graph)
     while epoch < 1000:
         batch_x, batch_y, is_reset = train_data.get_batch()
         if epoch == 0 and epoch_count == 0:
@@ -192,6 +199,8 @@ def run_train(sess, model, train_data):
                 print("epoch_count %d, cost:%.4f" % (
                     epoch_count, round(epoch_cost / epoch_count, 4)))
                 saver.save(sess, "tmp/model.ckpt")
+                writer.add_summary(cost_summary, epoch)
+
                 epoch += 1
                 epoch_count = 0
                 epoch_cost = 0
@@ -216,9 +225,9 @@ def run_train(sess, model, train_data):
                     model.cell_init_state_sensor_2: state2,
                     model.learning_rate: model.start_learning_rate
                 }
-        _, cost, state1, state2, pred = sess.run(
+        _, cost, state1, state2, pred, cost_summary = sess.run(
             [model.train_op, model.cost, model.cell_final_state_sensor_1, model.cell_final_state_sensor_2,
-             model.outputs],
+             model.outputs, merged],
             feed_dict=feed_dict
         )
         epoch_cost += cost
@@ -227,16 +236,26 @@ def run_train(sess, model, train_data):
         #     eval_accuracy(sess, test_data_set)
 
 
+def run_eval(sess, model, test_data):
+    print(test_data.cal_worst_best())
+    train_init_state = session.run(model.cell_init_state_sensor_1)
+    predict = eval_accuracy(sess, model, test_data, train_init_state)
+    print(predict)
+
+
 if __name__ == "__main__":
-    train_config = TrainConfig()
-    drnn_fusion_model_train = DRNNFusion(train_config)
+    if IS_TRAINING == 1:
+        train_config = TrainConfig()
+        drnn_fusion_model = DRNNFusion(train_config)
+    else:
+        test_config = TestConfig()
+        drnn_fusion_model = DRNNFusion(test_config)
     session = tf.Session()
-    merged = tf.summary.merge_all()
-    writer = tf.summary.FileWriter("logs", session.graph)
+
     saver = tf.train.Saver()
 
-    train_data_set, test_data_set = data_util.prepare_data(drnn_fusion_model_train.batch_size,
-                                                           drnn_fusion_model_train.time_steps)
+    train_data_set, test_data_set = data_util.prepare_data(drnn_fusion_model.batch_size,
+                                                           drnn_fusion_model.time_steps)
     init = tf.global_variables_initializer()
     session.run(init)
 
@@ -248,6 +267,6 @@ if __name__ == "__main__":
     else:
         print('No checkpoint found')
     if IS_TRAINING == 1:
-        run_train(session, drnn_fusion_model_train, train_data_set)
+        run_train(session, drnn_fusion_model, train_data_set)
     else:
-        pass
+        run_eval(session, drnn_fusion_model, test_data_set)
