@@ -16,7 +16,7 @@ BATCH_SIZE = 1
 INPUT_SIZE = 22
 OUTPUT_SIZE = 2
 CELL_SIZE = 128
-LR = 0.000025
+LR = 0.0001
 IS_TRAINING = 1
 
 
@@ -64,7 +64,7 @@ class LSTMRNN(object):
 
     def add_cell(self):
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self._cell_size, forget_bias=1.0, state_is_tuple=True)
-        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=0.6)
+        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob)
         self.stacked_lstm = rnn_cell.MultiRNNCell([lstm_cell] * 5,
                                                   state_is_tuple=True)
         with tf.name_scope('initial_state'):
@@ -117,13 +117,13 @@ def eval_accuracy(session, data_set_instance):
             feed_dict = {
                 model.xs: np.reshape(data_set_instance._inputs[j], [1, 1, 22]),
                 model.cell_init_state: val_init_state,
-                model.keep_prob: 0.8
+                model.keep_prob: 1
             }
         else:
             feed_dict = {
                 model.xs: np.reshape(data_set_instance._inputs[j], [1, 1, 22]),
                 model.cell_init_state: valid_state,
-                model.keep_prob: 0.8
+                model.keep_prob: 1
             }
         pred, valid_state = sess.run([model.pred, model.cell_final_state], feed_dict=feed_dict)
         predict.append(pred[0])
