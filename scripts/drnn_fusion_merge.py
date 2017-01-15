@@ -26,8 +26,8 @@ class TrainConfig(Config):
     input_size = 11
     output_size = 2
     rnn_layer_size = 5
-    cell_size = 20
-    dense_size = 20
+    cell_size = 200
+    dense_size = 200
     keep_prob_dense = 0.2
     keep_prob_rnn = 0.6
     start_learning_rate = START_LEARNING_RATE
