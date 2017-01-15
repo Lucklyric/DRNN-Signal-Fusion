@@ -183,6 +183,8 @@ def run_train(sess, model, train_data):
     state1 = state2 = None
     merged = tf.summary.merge_all()
     writer = tf.summary.FileWriter("logs", sess.graph)
+    previous_losses = []
+
     lr = model.start_learning_rate
     while epoch < 1000:
         batch_x, batch_y, is_reset = train_data.get_batch()
@@ -201,7 +203,10 @@ def run_train(sess, model, train_data):
                     epoch, round(epoch_cost / epoch_count, 4), lr))
                 saver.save(sess, "tmp/model.ckpt")
                 writer.add_summary(cost_summary, epoch)
-
+                if len(previous_losses) > 4.0 and epoch_cost > max(previous_losses[-5:]):
+                    print ("decay learning rate!!!")
+                    lr /= 2.0
+                previous_losses.append(epoch_cost)
                 epoch += 1
                 epoch_count = 0
                 epoch_cost = 0
