@@ -4,7 +4,7 @@ import numpy as np
 import data_util
 
 IS_TRAINING = 1
-START_LEARNING_RATE = 0.0005
+START_LEARNING_RATE = 0.003
 
 
 class Config(object):
@@ -22,14 +22,14 @@ class Config(object):
 
 class TrainConfig(Config):
     batch_size = 1
-    time_steps = 4300
+    time_steps = 1
     input_size = 11
     output_size = 2
     rnn_layer_size = 5
-    cell_size = 200
-    dense_size = 200
-    keep_prob_dense = 0.2
-    keep_prob_rnn = 0.6
+    cell_size = 512
+    dense_size = 512
+    keep_prob_dense = 0.5
+    keep_prob_rnn = 0.5
     start_learning_rate = START_LEARNING_RATE
 
 
@@ -71,13 +71,15 @@ class DRNNFusion(object):
                 fc1_inputs_sensor_1 = self.reshape_to_flat(self.xs_sensor_1, [-1, self.input_size])
                 fc1_inputs_sensor_2 = self.reshape_to_flat(self.xs_sensor_2, [-1, self.input_size])
 
-                fc1_sensor_1 = tc.layers.fully_connected(fc1_inputs_sensor_1, self.dense_size, activation_fn=tf.nn.relu,
-                                                         weights_initializer=tc.initializers.xavier_initializer(),
-                                                         )
+                fc1_s1_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, None, self.keep_prob_dense_tf,
+                                             name="fc1_s1_1")
+                fc1_sensor_1 = self.add_fc_layer(fc1_s1_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
+                                                 name="fc1_s1_2")
 
-                fc1_sensor_2 = tc.layers.fully_connected(fc1_inputs_sensor_2, self.dense_size, activation_fn=tf.nn.relu,
-                                                         weights_initializer=tc.initializers.xavier_initializer(),
-                                                         )
+                fc1_s2_1 = self.add_fc_layer(fc1_inputs_sensor_2, self.dense_size, None, self.keep_prob_dense_tf,
+                                             name="fc1_s2_1")
+                fc1_sensor_2 = self.add_fc_layer(fc1_s2_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
+                                                 name="fc1_s2_2")
 
         with tf.name_scope('split_rnn'):
             with tf.variable_scope("split_rnn_variable_sensor_1") as scope:
@@ -100,12 +102,13 @@ class DRNNFusion(object):
                     tc.layers.fully_connected(merged_outputs, self.dense_size, activation_fn=tf.nn.relu,
                                               weights_initializer=tc.initializers.xavier_initializer(),
                                               ), self.keep_prob_dense_tf)
+                fc_2_2 = self.add_fc_layer(self.fc2, self.dense_size, True, self.keep_prob_dense_tf, "fc_2_2")
                 self.outputs = tf.nn.dropout(
-                    tc.layers.fully_connected(self.fc2, self.output_size, activation_fn=tf.nn.relu,
+                    tc.layers.fully_connected(fc_2_2, self.output_size, activation_fn=None,
                                               weights_initializer=tc.initializers.xavier_initializer(),
                                               ), self.keep_prob_dense_tf)
         with tf.name_scope('cost'):
-            losses = tf.nn.seq2seq.sequence_loss(
+            losses = tf.nn.seq2seq.sequence_loss_by_example(
                 [tf.reshape(self.outputs, [-1, self.output_size], name="reshape_pred")],
                 [tf.reshape(self.ys, [-1, self.output_size], name="reshape_target")],
                 [tf.ones([self.output_size, self.batch_size * self.time_steps], dtype=tf.float32)],
@@ -130,6 +133,15 @@ class DRNNFusion(object):
 
     def reshape_to_three_d(self, inputs, shape):
         return tf.reshape(inputs, shape=shape, name="2_3D")
+
+    def add_fc_layer(self, inputs, outputs, is_drop, keep_prob, name):
+        with tf.name_scope(name):
+            fc = tc.layers.fully_connected(inputs, outputs, activation_fn=tf.nn.relu,
+                                           weights_initializer=tc.initializers.xavier_initializer(),
+                                           )
+            if is_drop:
+                fc = tf.nn.dropout(fc, keep_prob)
+        return fc
 
     def add_rnn_cell(self, inputs, scope):
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.rnn_cell_size, forget_bias=1.0, state_is_tuple=True)
@@ -203,7 +215,7 @@ def run_train(sess, model, train_data):
                     epoch, round(epoch_cost / epoch_count, 4), lr))
                 saver.save(sess, "tmp/model.ckpt")
                 writer.add_summary(cost_summary, epoch)
-                if len(previous_losses) > 4.0 and epoch_cost > max(previous_losses[-5:]):
+                if len(previous_losses) > 4.0 and epoch_cost > max(previous_losses[-5:]) and lr > 0.00002:
                     print ("decay learning rate!!!")
                     lr /= 2.0
                 previous_losses.append(epoch_cost)
@@ -238,13 +250,14 @@ def run_train(sess, model, train_data):
         )
         epoch_cost += cost
         epoch_count += 1
-        # if epoch % 5 == 0 and is_reset == 1:
-        #     eval_accuracy(sess, test_data_set)
+        if epoch % 5 == 0 and is_reset == 1:
+            eval_accuracy(sess, model, test_data_set, train_init_state)
 
 
-def run_eval(sess, model, test_data):
+def run_eval(sess, model, test_data, train_init_state=None):
     print(test_data.cal_worst_best())
-    train_init_state = session.run(model.cell_init_state_sensor_1)
+    if train_init_state is None:
+        train_init_state = session.run(model.cell_init_state_sensor_1)
     predict = eval_accuracy(sess, model, test_data, train_init_state)
     print(predict)
 
