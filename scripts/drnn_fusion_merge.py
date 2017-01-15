@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 0
+IS_TRAINING = 1
 START_LEARNING_RATE = 0.0005
 
 
@@ -64,7 +64,7 @@ class DRNNFusion(object):
             self.keep_prob_rnn_tf = tf.placeholder(tf.float32, name="keep_prob_rnn")
             self.keep_prob_dense_tf = tf.placeholder(tf.float32, name="keep_prob_rnn_dense_tf")
             self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
-
+            tf.summary.scalar('lr', self.learning_rate)
         with tf.name_scope('fc1'):
             with tf.variable_scope("fc1_variable"):
                 # sensor 1
@@ -101,7 +101,7 @@ class DRNNFusion(object):
                                               weights_initializer=tc.initializers.xavier_initializer(),
                                               ), self.keep_prob_dense_tf)
                 self.outputs = tf.nn.dropout(
-                    tc.layers.fully_connected(merged_outputs, self.output_size, activation_fn=tf.nn.relu,
+                    tc.layers.fully_connected(self.fc2, self.output_size, activation_fn=tf.nn.relu,
                                               weights_initializer=tc.initializers.xavier_initializer(),
                                               ), self.keep_prob_dense_tf)
         with tf.name_scope('cost'):
@@ -144,7 +144,7 @@ class DRNNFusion(object):
 
 def eval_accuracy(sess, model, data_set_instance, val_init_state):
     predict = []
-
+    lr = model.start_learning_rate
     for j in range(len(data_set_instance._inputs)):
         if j == 0:
             feed_dict = {
@@ -154,7 +154,7 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state):
                 model.keep_prob_dense_tf: 1,
                 model.cell_init_state_sensor_1: val_init_state,
                 model.cell_init_state_sensor_2: val_init_state,
-                model.learning_rate: model.start_learning_rate
+                model.learning_rate: lr
             }
         else:
             feed_dict = {
@@ -164,14 +164,14 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state):
                 model.keep_prob_dense_tf: 1,
                 model.cell_init_state_sensor_1: val_state_1,
                 model.cell_init_state_sensor_2: val_state_2,
-                model.learning_rate: model.start_learning_rate
+                model.learning_rate: lr
             }
         pred, val_state_1, val_state_2 = sess.run(
             [model.correct_pred, model.cell_final_state_sensor_1,
              model.cell_final_state_sensor_2], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
-    print("%f,%f" % (result, percent))
+    print("GE: %f,Accuracy:%f" % (result, percent))
     return predict
 
 
@@ -183,6 +183,7 @@ def run_train(sess, model, train_data):
     state1 = state2 = None
     merged = tf.summary.merge_all()
     writer = tf.summary.FileWriter("logs", sess.graph)
+    lr = model.start_learning_rate
     while epoch < 1000:
         batch_x, batch_y, is_reset = train_data.get_batch()
         if epoch == 0 and epoch_count == 0:
@@ -192,12 +193,12 @@ def run_train(sess, model, train_data):
                 model.ys: batch_y,
                 model.keep_prob_rnn_tf: model.keep_prob_rnn,
                 model.keep_prob_dense_tf: model.keep_prob_dense,
-                model.learning_rate: model.start_learning_rate
+                model.learning_rate: lr
             }
         else:
             if is_reset == 1:
-                print("epoch_count %d, cost:%.4f" % (
-                    epoch_count, round(epoch_cost / epoch_count, 4)))
+                print("epoch: %d, cost:%.4f, learning_rate:%f" % (
+                    epoch, round(epoch_cost / epoch_count, 4), lr))
                 saver.save(sess, "tmp/model.ckpt")
                 writer.add_summary(cost_summary, epoch)
 
@@ -212,7 +213,7 @@ def run_train(sess, model, train_data):
                     model.keep_prob_dense_tf: model.keep_prob_dense,
                     model.cell_init_state_sensor_1: train_init_state,
                     model.cell_init_state_sensor_2: train_init_state,
-                    model.learning_rate: model.start_learning_rate
+                    model.learning_rate: lr
                 }
             else:
                 feed_dict = {
@@ -223,11 +224,11 @@ def run_train(sess, model, train_data):
                     model.keep_prob_dense_tf: model.keep_prob_dense,
                     model.cell_init_state_sensor_1: state1,
                     model.cell_init_state_sensor_2: state2,
-                    model.learning_rate: model.start_learning_rate
+                    model.learning_rate: lr
                 }
-        _, cost, state1, state2, pred, cost_summary = sess.run(
+        _, cost, state1, state2, pred, cost_summary, lr = sess.run(
             [model.train_op, model.cost, model.cell_final_state_sensor_1, model.cell_final_state_sensor_2,
-             model.outputs, merged],
+             model.outputs, merged, model.learning_rate],
             feed_dict=feed_dict
         )
         epoch_cost += cost
