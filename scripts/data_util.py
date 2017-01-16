@@ -41,8 +41,8 @@ class FusionDataSet(object):
 
     def evaluate(self, outputs):
         sum_error = 0
-        n_sample = len(self._error_means)
-        for index in range(len(self._error_means)):
+        n_sample = len(outputs)
+        for index in range(len(outputs)):
             sum_error += self._error_means[index][outputs[index]]
 
         mean_error = sum_error / n_sample
