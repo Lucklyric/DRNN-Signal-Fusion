@@ -39,14 +39,20 @@ class FusionDataSet(object):
             worst += self._error_means[index][np.argmin(self._outputs[index])]
         return worst / n_sample, best / n_sample
 
-    def evaluate(self, outputs):
+    def evaluate(self, outputs, target=None):
+        if target is not None:
+            correct_count = 0
+            for index in range(len(outputs)):
+                if target[index[outputs[index]]] == 1:
+                    correct_count += 1
+            return correct_count / len(outputs)
         sum_error = 0
         n_sample = len(outputs)
         for index in range(len(outputs)):
             sum_error += self._error_means[index][outputs[index]]
 
         mean_error = sum_error / n_sample
-        return sum_error / n_sample, 1-(mean_error - self.best_error_mean) / (
+        return sum_error / n_sample, 1 - (mean_error - self.best_error_mean) / (
             self.worst_error_mean - self.best_error_mean)
 
 

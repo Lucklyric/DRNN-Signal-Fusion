@@ -1,4 +1,5 @@
 *.49.hdf5
 *.pyc
-logs/
-tmp/
+logs/*
+tmp/*
+backup/*

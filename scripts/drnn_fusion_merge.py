@@ -22,7 +22,7 @@ class Config(object):
 
 class TrainConfig(Config):
     batch_size = 1
-    time_steps = 500
+    time_steps = 256
     input_size = 11
     output_size = 2
     rnn_layer_size = 3
@@ -157,7 +157,7 @@ class DRNNFusion(object):
 def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
     predict = []
     lr = model.start_learning_rate
-    batch_x, _, _ = data_set_instance.get_batch()
+    batch_x, batch_y, _ = data_set_instance.get_batch()
     if mode == 2:
         feed_dict = {
             model.xs_sensor_1: batch_x[:, :, :11],
@@ -200,7 +200,7 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
              model.cell_final_state_sensor_2], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
-    print("GE: %f,Accuracy:%f" % (result, percent))
+    print("GE: %f,Accuracy:%f, Count:%d" % (result, percent,len(predict)))
     return predict
 
 
