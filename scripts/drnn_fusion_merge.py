@@ -27,8 +27,8 @@ class TrainConfig(Config):
     input_size = 11
     output_size = 2
     rnn_layer_size = 3
-    cell_size = 200
-    dense_size = 200
+    cell_size = 256
+    dense_size = 256
     keep_prob_dense = 0.5
     keep_prob_rnn = 0.5
     start_learning_rate = START_LEARNING_RATE
@@ -83,28 +83,28 @@ class DRNNFusion(object):
                 fc1_inputs_sensor_1 = self.reshape_to_flat(self.xs_sensor_1, [-1, self.input_size])
                 fc1_inputs_sensor_2 = self.reshape_to_flat(self.xs_sensor_2, [-1, self.input_size])
 
-                fc1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc2_s1_1",
+                fc1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc_1",
                                                  self.keep_prob_dense_tf,
-                                                 act_fn=tf.nn.relu)
+                                                 act_fn=tf.nn.relu, reuse=not self.is_training)
                 # fc1_sensor_1 = self.add_fc_layer(fc1_s1_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
                 #                                  name="fc1_s1_2")
 
-                fc1_sensor_2 = self.add_fc_layer(fc1_inputs_sensor_2, self.dense_size, "fc1_s2_1",
-                                                 self.keep_prob_dense_tf,
+                fc1_sensor_2 = self.add_fc_layer(fc1_inputs_sensor_2, self.dense_size, "fc_1",
+                                                 self.keep_prob_dense_tf, act_fn=tf.nn.relu, reuse=True
                                                  )
                 # fc1_sensor_2 = self.add_fc_layer(fc1_s2_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
                 #                                  name="fc1_s2_2")
 
         with tf.name_scope('split_rnn'):
-            with tf.variable_scope("split_rnn_variable_sensor_1") as scope:
-                self.cell_init_state_sensor_1, self.cell_outputs_sensor_1, self.cell_final_state_sensor_1 = \
-                    self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_1, [-1, self.time_steps, self.rnn_cell_size]),
-                                      scope)
+            # with tf.variable_scope("split_rnn_variable_sensor_1") as scope:
+            self.cell_init_state_sensor_1, self.cell_outputs_sensor_1, self.cell_final_state_sensor_1 = \
+                self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_1, [-1, self.time_steps, self.rnn_cell_size]),
+                                  not self.is_training)
 
-            with tf.variable_scope("split_rnn_variable_sensor_2") as scope:
-                self.cell_init_state_sensor_2, self.cell_outputs_sensor_2, self.cell_final_state_sensor_2 = \
-                    self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_2, [-1, self.time_steps, self.rnn_cell_size]),
-                                      scope)
+            # with tf.variable_scope("split_rnn_variable_sensor_2") as scope:
+            self.cell_init_state_sensor_2, self.cell_outputs_sensor_2, self.cell_final_state_sensor_2 = \
+                self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_2, [-1, self.time_steps, self.rnn_cell_size]),
+                                  True)
 
         with tf.name_scope('merge'):
             merged_outputs = tf.concat(1, [self.reshape_to_flat(self.cell_outputs_sensor_1, [-1, self.rnn_cell_size]),
@@ -113,11 +113,11 @@ class DRNNFusion(object):
         with tf.name_scope('output_fc'):
             with tf.variable_scope("fc_variable"):
                 self.fc2 = self.add_fc_layer(merged_outputs, self.dense_size, "fc_2_1", self.keep_prob_dense_tf,
-                                             tf.nn.relu)
+                                             tf.nn.relu, reuse=not self.is_training)
 
                 # fc_2_2 = self.add_fc_layer(self.fc2, self.dense_size, True, self.keep_prob_dense_tf, "fc_2_2")
                 self.outputs = self.add_fc_layer(self.fc2, self.output_size, "fc_2_2", self.keep_prob_dense_tf,
-                                                 None)
+                                                 None, reuse=not self.is_training)
         with tf.name_scope("correct_pred"):
             self.correct_pred = tf.arg_max(self.outputs, 1)
         if self.is_training is False:
@@ -148,20 +148,21 @@ class DRNNFusion(object):
     def reshape_to_three_d(self, inputs, shape):
         return tf.reshape(inputs, shape=shape, name="2_3D")
 
-    def add_fc_layer(self, inputs, outputs, name, keep_prob=None, act_fn=None):
+    def add_fc_layer(self, inputs, outputs, name, keep_prob=None, act_fn=None, reuse=None):
         with tf.variable_scope(name) as scope:
-            if self.is_training is False:
+            if reuse is True:
                 tf.get_variable_scope().reuse_variables()
             fc = tc.layers.fully_connected(inputs, outputs, activation_fn=act_fn,
                                            weights_initializer=tc.initializers.xavier_initializer(),
-                                           scope=scope, reuse=not self.is_training)
+                                           scope=scope, reuse=reuse)
             if self.is_training and keep_prob is not None:
                 fc = tf.nn.dropout(fc, keep_prob)
         return fc
 
-    def add_rnn_cell(self, inputs, scope):
-        if self.is_training is False:
+    def add_rnn_cell(self, inputs, reuse=None):
+        if reuse is True:
             tf.get_variable_scope().reuse_variables()
+
         lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self.rnn_cell_size, forget_bias=1.0, state_is_tuple=True)
         lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob_rnn_tf)
         stacked_lstm = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * self.rnn_layer_size)
