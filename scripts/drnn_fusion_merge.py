@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 1
+IS_TRAINING = 0
 START_LEARNING_RATE = 0.0015
 
 
@@ -84,15 +84,15 @@ class DRNNFusion(object):
 
                 fc1_in_1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc_in_1",
                                                       None,
-                                                      act_fn=tf.nn.relu, reuse=not self.is_training)
+                                                      act_fn=tf.nn.relu, reuse=(not self.is_training and IS_TRAINING == 1))
 
                 fc1_in_2_sensor_1 = self.add_fc_layer(fc1_in_1_sensor_1, self.dense_size, "fc_in_2",
                                                       self.keep_prob_dense_tf,
-                                                      act_fn=tf.nn.relu, reuse=not self.is_training)
+                                                      act_fn=tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
 
                 fc1_sensor_1 = self.add_fc_layer(fc1_in_2_sensor_1, self.dense_size, "fc_in_rnn",
                                                  self.keep_prob_dense_tf,
-                                                 act_fn=tf.nn.relu, reuse=not self.is_training)
+                                                 act_fn=tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
                 # fc1_sensor_1 = self.add_fc_layer(fc1_s1_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
                 #                                  name="fc1_s1_2")
 
@@ -113,7 +113,7 @@ class DRNNFusion(object):
             # with tf.variable_scope("split_rnn_variable_sensor_1") as scope:
             self.cell_init_state_sensor_1, self.cell_outputs_sensor_1, self.cell_final_state_sensor_1 = \
                 self.add_rnn_cell(self.reshape_to_three_d(fc1_sensor_1, [-1, self.time_steps, self.rnn_cell_size]),
-                                  not self.is_training)
+                                  not self.is_training and IS_TRAINING == 1)
 
             # with tf.variable_scope("split_rnn_variable_sensor_2") as scope:
             self.cell_init_state_sensor_2, self.cell_outputs_sensor_2, self.cell_final_state_sensor_2 = \
@@ -127,13 +127,13 @@ class DRNNFusion(object):
         with tf.name_scope('output_fc'):
             with tf.variable_scope("fc_variable"):
                 fc_o_1 = self.add_fc_layer(merged_outputs, self.dense_size, "fc_o_1", self.keep_prob_dense_tf,
-                                           tf.nn.relu, reuse=not self.is_training)
+                                           tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
 
                 # fc_o_2 = self.add_fc_layer(fc_o_1, self.dense_size, "fc_o_2", self.keep_prob_dense_tf, tf.nn.relu,
                 #                            reuse=not self.is_training)
 
                 self.outputs = self.add_fc_layer(fc_o_1, self.output_size, "fc_out", self.keep_prob_dense_tf,
-                                                 None, reuse=not self.is_training)
+                                                 None, reuse=not self.is_training and IS_TRAINING == 1)
         with tf.name_scope("correct_pred"):
             self.correct_pred = tf.arg_max(self.outputs, 1)
         if self.is_training is False:
