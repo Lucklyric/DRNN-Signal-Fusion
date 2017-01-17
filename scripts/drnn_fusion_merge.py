@@ -23,10 +23,10 @@ class Config(object):
 
 class TrainConfig(Config):
     batch_size = 1
-    time_steps = 3000
+    time_steps = 4300
     input_size = 11
     output_size = 2
-    rnn_layer_size = 3
+    rnn_layer_size = 2
     cell_size = 256
     dense_size = 256
     keep_prob_dense = 0.5
@@ -62,7 +62,6 @@ class DRNNFusion(object):
         else:
             name_prefix = "test"
 
-        print name_prefix
         with tf.variable_scope(name_prefix + "_inputs"):
             self.xs_sensor_1 = tf.placeholder(tf.float32, [self.batch_size, self.time_steps, self.input_size],
                                               name='xs_sensor_1')
@@ -83,13 +82,28 @@ class DRNNFusion(object):
                 fc1_inputs_sensor_1 = self.reshape_to_flat(self.xs_sensor_1, [-1, self.input_size])
                 fc1_inputs_sensor_2 = self.reshape_to_flat(self.xs_sensor_2, [-1, self.input_size])
 
-                fc1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc_1",
+                fc1_in_1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc_in_1",
+                                                      None,
+                                                      act_fn=tf.nn.relu, reuse=not self.is_training)
+
+                fc1_in_2_sensor_1 = self.add_fc_layer(fc1_in_1_sensor_1, self.dense_size, "fc_in_2",
+                                                      self.keep_prob_dense_tf,
+                                                      act_fn=tf.nn.relu, reuse=not self.is_training)
+
+                fc1_sensor_1 = self.add_fc_layer(fc1_in_2_sensor_1, self.dense_size, "fc_in_rnn",
                                                  self.keep_prob_dense_tf,
                                                  act_fn=tf.nn.relu, reuse=not self.is_training)
                 # fc1_sensor_1 = self.add_fc_layer(fc1_s1_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
                 #                                  name="fc1_s1_2")
 
-                fc1_sensor_2 = self.add_fc_layer(fc1_inputs_sensor_2, self.dense_size, "fc_1",
+                fc1_in_1_sensor_2 = self.add_fc_layer(fc1_inputs_sensor_2, self.dense_size, "fc_in_1",
+                                                      None, act_fn=tf.nn.relu, reuse=True
+                                                      )
+
+                fc1_in_2_sensor_2 = self.add_fc_layer(fc1_in_1_sensor_2, self.dense_size, "fc_in_2",
+                                                      None, act_fn=tf.nn.relu, reuse=True
+                                                      )
+                fc1_sensor_2 = self.add_fc_layer(fc1_in_2_sensor_2, self.dense_size, "fc_in_rnn",
                                                  self.keep_prob_dense_tf, act_fn=tf.nn.relu, reuse=True
                                                  )
                 # fc1_sensor_2 = self.add_fc_layer(fc1_s2_1, self.rnn_cell_size, True, self.keep_prob_dense_tf,
@@ -112,11 +126,13 @@ class DRNNFusion(object):
 
         with tf.name_scope('output_fc'):
             with tf.variable_scope("fc_variable"):
-                self.fc2 = self.add_fc_layer(merged_outputs, self.dense_size, "fc_2_1", self.keep_prob_dense_tf,
-                                             tf.nn.relu, reuse=not self.is_training)
+                fc_o_1 = self.add_fc_layer(merged_outputs, self.dense_size, "fc_o_1", self.keep_prob_dense_tf,
+                                           tf.nn.relu, reuse=not self.is_training)
 
-                # fc_2_2 = self.add_fc_layer(self.fc2, self.dense_size, True, self.keep_prob_dense_tf, "fc_2_2")
-                self.outputs = self.add_fc_layer(self.fc2, self.output_size, "fc_2_2", self.keep_prob_dense_tf,
+                # fc_o_2 = self.add_fc_layer(fc_o_1, self.dense_size, "fc_o_2", self.keep_prob_dense_tf, tf.nn.relu,
+                #                            reuse=not self.is_training)
+
+                self.outputs = self.add_fc_layer(fc_o_1, self.output_size, "fc_out", self.keep_prob_dense_tf,
                                                  None, reuse=not self.is_training)
         with tf.name_scope("correct_pred"):
             self.correct_pred = tf.arg_max(self.outputs, 1)
