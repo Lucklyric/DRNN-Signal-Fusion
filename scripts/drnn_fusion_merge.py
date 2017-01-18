@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 0
+IS_TRAINING = 1
 START_LEARNING_RATE = 0.0015
 
 
@@ -84,11 +84,13 @@ class DRNNFusion(object):
 
                 fc1_in_1_sensor_1 = self.add_fc_layer(fc1_inputs_sensor_1, self.dense_size, "fc_in_1",
                                                       None,
-                                                      act_fn=tf.nn.relu, reuse=(not self.is_training and IS_TRAINING == 1))
+                                                      act_fn=tf.nn.relu,
+                                                      reuse=(not self.is_training and IS_TRAINING == 1))
 
                 fc1_in_2_sensor_1 = self.add_fc_layer(fc1_in_1_sensor_1, self.dense_size, "fc_in_2",
                                                       self.keep_prob_dense_tf,
-                                                      act_fn=tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
+                                                      act_fn=tf.nn.relu,
+                                                      reuse=not self.is_training and IS_TRAINING == 1)
 
                 fc1_sensor_1 = self.add_fc_layer(fc1_in_2_sensor_1, self.dense_size, "fc_in_rnn",
                                                  self.keep_prob_dense_tf,
@@ -101,7 +103,7 @@ class DRNNFusion(object):
                                                       )
 
                 fc1_in_2_sensor_2 = self.add_fc_layer(fc1_in_1_sensor_2, self.dense_size, "fc_in_2",
-                                                      None, act_fn=tf.nn.relu, reuse=True
+                                                      self.keep_prob_dense_tf, act_fn=tf.nn.relu, reuse=True
                                                       )
                 fc1_sensor_2 = self.add_fc_layer(fc1_in_2_sensor_2, self.dense_size, "fc_in_rnn",
                                                  self.keep_prob_dense_tf, act_fn=tf.nn.relu, reuse=True
