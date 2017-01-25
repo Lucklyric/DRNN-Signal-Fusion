@@ -10,12 +10,12 @@ with tf.name_scope("inputs_reshape"):
     board_input_reshape = tf.reshape(board_input, [-1, 10, 9, 1], name="board_input_reshape")
 
 with tf.name_scope("conv1"):
-    conv1 = tc.conv2d(board_input_reshape, 30, kernel_size=[1, 2, 2, 1])
-    conv1_pool = tc.max_pool2d(conv1, kernel_size=[1, 2, 2, 1], stride=[1, 2, 2, 1])
+    conv1 = tc.conv2d(board_input_reshape, 30, kernel_size=[2, 2])
+    conv1_pool = tc.max_pool2d(conv1, kernel_size=[2, 2], stride=[2, 2])
 
 with tf.name_scope("conv2"):
-    conv2 = tc.conv2d(conv1_pool, 64, kernel_size=[1, 2, 2, 1])
-    conv2_pool = tc.max_pool2d(conv2, kernel_size=[1, 2, 2, 1], stride=[1, 2, 2, 1])
+    conv2 = tc.conv2d(conv1_pool, 64, kernel_size=[2, 2])
+    conv2_pool = tc.max_pool2d(conv2, kernel_size=[2, 2], stride=[2, 2])
 
 with tf.name_scope("fc1"):
     fc1 = tf.nn.dropout(tc.fully_connected(conv2_pool, 5000), 0.5)
@@ -31,5 +31,5 @@ with tf.name_scope("loss"):
 
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())
-writer = tf.summary.FileWriter("logs-ZGXQ",sess.graph)
+writer = tf.summary.FileWriter("logs-ZGXQ", sess.graph)
 # train_step.run(feed_dict={x=batch[0]})
