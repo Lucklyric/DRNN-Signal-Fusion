@@ -3,7 +3,7 @@ import tensorflow.contrib.layers as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 1
+IS_TRAINING = 0
 START_LEARNING_RATE = 0.0015
 
 
@@ -70,6 +70,8 @@ class DRNNFusion(object):
             self.ys = tf.placeholder(tf.float32, [self.batch_size, self.time_steps, self.output_size], name='ys')
 
         with tf.variable_scope("configure"):
+            self.global_step = tf.Variable(0, name="global_step", trainable=False, dtype=tf.int32)
+            self.max_accuracy = tf.Variable(0, name="max_accuracy", trainable=False, dtype=tf.float32)
             self.keep_prob_rnn_tf = tf.placeholder(tf.float32, name="keep_prob_rnn")
             self.keep_prob_dense_tf = tf.placeholder(tf.float32, name="keep_prob_rnn_dense_tf")
             if self.is_training is True:
@@ -159,6 +161,7 @@ class DRNNFusion(object):
 
         with tf.name_scope("train"):
             self.train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.cost)
+            self.increase_step = self.global_step.assign_add(1)
 
     def reshape_to_flat(self, inputs, shape):
         return tf.reshape(inputs, shape=shape, name="2_2D")
@@ -233,7 +236,11 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
              model.cell_final_state_sensor_2], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
-    print("GE: %f,Accuracy:%f" % (result, percent))
+    print("GE: %f,Accuracy:%f,Highest:%f" % (result, percent, model.max_accuracy.eval(sess)))
+    if percent > model.max_accuracy.eval(sess):
+        sess.run(model.max_accuracy.assign(float(percent)))
+        saver.save(sess, "tmp/highest/model.ckpt", global_step=model.global_step)
+        print ("MAX:Accuracy")
     return predict
 
 
@@ -248,7 +255,7 @@ def run_train(sess, model, train_data):
     previous_losses = []
 
     lr = model.start_learning_rate
-    while epoch < 1000:
+    while epoch < 10000:
         batch_x, batch_y, is_reset = train_data.get_batch()
         if epoch == 0 and epoch_count == 0:
             feed_dict = {
@@ -263,8 +270,7 @@ def run_train(sess, model, train_data):
             if is_reset == 1:
                 print("epoch: %d, cost:%.4f, learning_rate:%f" % (
                     epoch, round(epoch_cost / epoch_count, 4), lr))
-                saver.save(sess, "tmp/model.ckpt")
-                writer.add_summary(cost_summary, epoch)
+                writer.add_summary(cost_summary, model.global_step.eval(sess))
                 if len(previous_losses) > 4.0 and epoch_cost > max(previous_losses[-5:]) and lr > 0.00002:
                     print ("decay learning rate!!!")
                     lr /= 2.0
@@ -293,11 +299,12 @@ def run_train(sess, model, train_data):
                     model.cell_init_state_sensor_2: state2,
                     model.learning_rate: lr
                 }
-        _, cost, state1, state2, pred, cost_summary, lr = sess.run(
+        _, cost, state1, state2, pred, cost_summary, lr, g_step = sess.run(
             [model.train_op, model.cost, model.cell_final_state_sensor_1, model.cell_final_state_sensor_2,
-             model.outputs, merged, model.learning_rate],
+             model.outputs, merged, model.learning_rate, model.increase_step],
             feed_dict=feed_dict
         )
+        print ("Global_Step:%d" % g_step)
         epoch_cost += cost
         epoch_count += 1
         if epoch % 1 == 0 and is_reset == 1:
@@ -334,7 +341,7 @@ if __name__ == "__main__":
         init = tf.global_variables_initializer()
         session.run(init)
         print (drnn_fusion_model.time_steps)
-        ckpt = tf.train.get_checkpoint_state('tmp/')
+        ckpt = tf.train.get_checkpoint_state('tmp/highest/')
 
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(session, ckpt.model_checkpoint_path)
