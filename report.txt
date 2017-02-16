@@ -1,0 +1,44 @@
+================================================================================
+Input tree: 'scripts'
+================================================================================
+--------------------------------------------------------------------------------
+Processing file 'scripts/data_util.py'
+ outputting to 'scripts_1.0/data_util.py'
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+Processing file 'scripts/data_util_test.py'
+ outputting to 'scripts_1.0/data_util_test.py'
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+Processing file 'scripts/drnn_fusion.py'
+ outputting to 'scripts_1.0/drnn_fusion.py'
+--------------------------------------------------------------------------------
+
+
+--------------------------------------------------------------------------------
+Processing file 'scripts/drnn_fusion_merge.py'
+ outputting to 'scripts_1.0/drnn_fusion_merge.py'
+--------------------------------------------------------------------------------
+
+'scripts/drnn_fusion_merge.py' Line 128
+--------------------------------------------------------------------------------
+
+Added keyword 'concat_dim' to reordered function 'tf.concat'
+Added keyword 'values' to reordered function 'tf.concat'
+
+    Old:             merged_outputs = tf.concat(1, [self.reshape_to_flat(self.cell_outputs_sensor_1, [-1, self.rnn_cell_size]),
+                                                                                                                                
+    New:             merged_outputs = tf.concat(axis=1, values=[self.reshape_to_flat(self.cell_outputs_sensor_1, [-1, self.rnn_cell_size]),
+                                                ~~~~~   ~~~~~~~                                                                             
+
+
+--------------------------------------------------------------------------------
+Processing file 'scripts/test1.py'
+ outputting to 'scripts_1.0/test1.py'
+--------------------------------------------------------------------------------
+
+
