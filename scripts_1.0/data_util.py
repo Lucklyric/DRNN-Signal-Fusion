@@ -23,7 +23,7 @@ class FusionDataSet(object):
             reset = 1
 
         xs = self._inputs[self._start_cursor:self._start_cursor + self._time_step * self._batch_size].reshape(
-            (self._batch_size, self._time_step, 22))
+            (self._batch_size, self._time_step, 24))
         ys = np.asarray(
             self._outputs[self._start_cursor:self._start_cursor + self._time_step * self._batch_size]).reshape(
             (self._batch_size, self._time_step, 2))
@@ -56,24 +56,24 @@ def parse_two_sensors(raw_data):
     outputs = []
     sensor_error_means = []
     for index in range(len(raw_data)):
-        if raw_data[index][12:13] == np.inf:
+        if raw_data[index][13:14] == np.inf:
             print ("catach", index)
         if index % 2 == 0:
-            sensor_one_inputs.append(raw_data[index, 0:11].astype(np.float32))
+            sensor_one_inputs.append(raw_data[index, 0:12].astype(np.float32))
         else:
-            sensor_two_inputs.append(raw_data[index, 0:11].astype(np.float32))
-            if raw_data[index, 11:12] == 0:
+            sensor_two_inputs.append(raw_data[index, 0:12].astype(np.float32))
+            if raw_data[index, 12:13] == 0:
                 outputs.append([1, 0])
             else:
                 outputs.append([0, 1])
             sensor_error_means.append(
-                [raw_data[index - 1, 12:13].astype(np.float32), raw_data[index, 12:13].astype(np.float32)])
+                [raw_data[index - 1, 13:14].astype(np.float32), raw_data[index, 13:14].astype(np.float32)])
     return sensor_one_inputs, sensor_two_inputs, outputs, sensor_error_means
 
 
 def prepare_data(batch_size, time_step):
-    data_train = np.loadtxt("../data/twosensors2-new.csv", delimiter=",")
-    data_test = np.loadtxt("../data/twosensors1-new.csv", delimiter=",")
+    data_train = np.loadtxt("../data/twosensors2-new-normal.csv", delimiter=",")
+    data_test = np.loadtxt("../data/twosensors-new-normal.csv", delimiter=",")
 
     train_inputs_s1, train_inputs_s2, train_outputs, train_error_means = parse_two_sensors(data_train)
     test_inputs_s1, test_inputs_s2, test_outputs, test_error_means = parse_two_sensors(data_test)

@@ -24,7 +24,7 @@ class Config(object):
 class TrainConfig(Config):
     batch_size = 1
     time_steps = 4300
-    input_size = 11
+    input_size = 12
     output_size = 2
     rnn_layer_size = 2
     cell_size = 256
@@ -197,8 +197,8 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
     batch_x, _, _ = data_set_instance.get_batch()
     if mode == 2:
         feed_dict = {
-            model.xs_sensor_1: batch_x[:, :, :11],
-            model.xs_sensor_2: batch_x[:, :, 11:],
+            model.xs_sensor_1: batch_x[:, :, :12],
+            model.xs_sensor_2: batch_x[:, :, 12:],
             model.keep_prob_rnn_tf: 1,
             model.keep_prob_dense_tf: 1,
             model.cell_init_state_sensor_1: val_init_state,
@@ -213,8 +213,8 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
     for j in range(len(data_set_instance._inputs)):
         if j == 0:
             feed_dict = {
-                model.xs_sensor_1: (np.reshape(data_set_instance._inputs[j], [1, 1, 22]))[:, :, :11],
-                model.xs_sensor_2: (np.reshape(data_set_instance._inputs[j], [1, 1, 22]))[:, :, 11:],
+                model.xs_sensor_1: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, :12],
+                model.xs_sensor_2: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, 12:],
                 model.keep_prob_rnn_tf: 1,
                 model.keep_prob_dense_tf: 1,
                 model.cell_init_state_sensor_1: val_init_state,
@@ -222,8 +222,8 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
             }
         else:
             feed_dict = {
-                model.xs_sensor_1: (np.reshape(data_set_instance._inputs[j], [1, 1, 22]))[:, :, :11],
-                model.xs_sensor_2: (np.reshape(data_set_instance._inputs[j], [1, 1, 22]))[:, :, 11:],
+                model.xs_sensor_1: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, :12],
+                model.xs_sensor_2: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, 12:],
                 model.keep_prob_rnn_tf: 1,
                 model.keep_prob_dense_tf: 1,
                 model.cell_init_state_sensor_1: val_state_1,
@@ -257,8 +257,8 @@ def run_train(sess, model, train_data):
         batch_x, batch_y, is_reset = train_data.get_batch()
         if epoch == 0 and epoch_count == 0:
             feed_dict = {
-                model.xs_sensor_1: batch_x[:, :, :11],
-                model.xs_sensor_2: batch_x[:, :, 11:],
+                model.xs_sensor_1: batch_x[:, :, :12],
+                model.xs_sensor_2: batch_x[:, :, 12:],
                 model.ys: batch_y,
                 model.keep_prob_rnn_tf: model.keep_prob_rnn,
                 model.keep_prob_dense_tf: model.keep_prob_dense,
@@ -277,8 +277,8 @@ def run_train(sess, model, train_data):
                 epoch_count = 0
                 epoch_cost = 0
                 feed_dict = {
-                    model.xs_sensor_1: batch_x[:, :, :11],
-                    model.xs_sensor_2: batch_x[:, :, 11:],
+                    model.xs_sensor_1: batch_x[:, :, :12],
+                    model.xs_sensor_2: batch_x[:, :, 12:],
                     model.ys: batch_y,
                     model.keep_prob_rnn_tf: model.keep_prob_rnn,
                     model.keep_prob_dense_tf: model.keep_prob_dense,
@@ -288,8 +288,8 @@ def run_train(sess, model, train_data):
                 }
             else:
                 feed_dict = {
-                    model.xs_sensor_1: batch_x[:, :, :11],
-                    model.xs_sensor_2: batch_x[:, :, 11:],
+                    model.xs_sensor_1: batch_x[:, :, :12],
+                    model.xs_sensor_2: batch_x[:, :, 12:],
                     model.ys: batch_y,
                     model.keep_prob_rnn_tf: model.keep_prob_rnn,
                     model.keep_prob_dense_tf: model.keep_prob_dense,
