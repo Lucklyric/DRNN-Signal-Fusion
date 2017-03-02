@@ -1,3 +1,7 @@
 .idea/
 data/2/
 scripts/backup/
+scripts_1.0/backup/
+scripts_1.0/tmp/
+scripts_1.0/log/
+scripts_1.0/logs/
