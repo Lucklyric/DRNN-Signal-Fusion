@@ -46,6 +46,7 @@ class FusionDataSet(object):
             sum_error += self._error_means[index][outputs[index]]
 
         mean_error = sum_error / n_sample
+        print("S1:%f,S2:%f"%(self._s1_error_mean,self._s2_error_mean))
         return sum_error / n_sample, 1-(mean_error - self.best_error_mean) / (
             self.worst_error_mean - self.best_error_mean)
 

@@ -3,7 +3,7 @@ import tensorflow.contrib as tc
 import numpy as np
 import data_util
 
-IS_TRAINING = 1
+IS_TRAINING = 0
 START_LEARNING_RATE = 0.0015
 
 
@@ -235,7 +235,7 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
     print("GE: %f,Accuracy:%f,Highest:%f" % (result, percent, model.max_accuracy.eval(sess)))
-    if percent > model.max_accuracy.eval(sess):
+    if percent > model.max_accuracy.eval(sess) and IS_TRAINING == 1:
         sess.run(model.max_accuracy.assign(float(percent)))
         saver.save(sess, "tmp/highest/model.ckpt", global_step=model.global_step)
         print ("MAX:Accuracy")
