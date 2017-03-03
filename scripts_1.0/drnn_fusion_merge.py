@@ -229,8 +229,8 @@ def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
                 model.cell_init_state_sensor_1: val_state_1,
                 model.cell_init_state_sensor_2: val_state_2,
             }
-        pred, val_state_1, val_state_2 = sess.run(
-            [model.correct_pred, model.cell_final_state_sensor_1,
+        pred, out,val_state_1, val_state_2 = sess.run(
+            [model.correct_pred, model.outputs,model.cell_final_state_sensor_1,
              model.cell_final_state_sensor_2], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)

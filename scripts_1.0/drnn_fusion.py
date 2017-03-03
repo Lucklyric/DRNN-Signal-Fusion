@@ -1,224 +1,308 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import time
-
-import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops import rnn, rnn_cell
-import tensorflow.contrib.layers as tc
+import tensorflow.contrib as tc
+import numpy as np
 import data_util
 
-BATCH_START = 0
-TIME_STEPS = 1
-BATCH_SIZE = 1
-INPUT_SIZE = 22
-OUTPUT_SIZE = 2
-CELL_SIZE = 128
-LR = 0.0001
-IS_TRAINING = 1
+IS_TRAINING = 0
+START_LEARNING_RATE = 0.0015
 
 
-class LSTMRNN(object):
-    def __init__(self, n_step, input_size, output_size, cell_size, batch_size):
-        self._n_steps = n_step
-        self._input_size = input_size
-        self._output_size = output_size
-        self._cell_size = cell_size
-        self._batch_size = batch_size
-        with tf.name_scope("inputs"):
-            self.xs = tf.placeholder(tf.float32, [None, self._n_steps, input_size], name="xs")
-            self.ys = tf.placeholder(tf.float32, [None, self._n_steps, output_size], name="ys")
-            self.keep_prob = tf.placeholder(tf.float32)
-        with tf.variable_scope("in_hidden"):
-            self.add_input_layer()
-        with tf.variable_scope("LSTM_cell"):
-            self.add_cell()
-        with tf.variable_scope("out_hidden"):
-            self.add_output_layer()
-        with tf.name_scope("cost"):
-            self.comput_cost()
-        with tf.name_scope("train"):
-            self.train_op = tf.train.AdamOptimizer(LR).minimize(self.cost)
+class Config(object):
+    batch_size = 20
+    time_steps = 20
+    input_size = 22
+    output_size = 2
+    cell_size = 200
+    dense_size = 200
+    rnn_layer_size = 5
+    keep_prob_dense = 0.2
+    keep_prob_rnn = 0.6
+    is_training = True
+    start_learning_rate = START_LEARNING_RATE
+
+
+class TrainConfig(Config):
+    batch_size = 1
+    time_steps = 4300
+    input_size = 24
+    output_size = 2
+    rnn_layer_size = 4
+    cell_size = 256
+    dense_size = 256
+    keep_prob_dense = 0.5
+    keep_prob_rnn = 0.5
+    start_learning_rate = START_LEARNING_RATE
+
+
+class TestConfig(TrainConfig):
+    batch_size = 1
+    time_steps = 1
+    keep_pro_dense = 1
+    keep_pro_rnn = 1
+    is_training = False
+
+
+class DRNNFusion(object):
+    def __init__(self, config):
+        self.batch_size = config.batch_size
+        self.time_steps = config.time_steps
+        self.input_size = config.input_size
+        self.output_size = config.output_size
+        self.rnn_cell_size = config.cell_size
+        self.keep_prob_dense = config.keep_prob_dense
+        self.keep_prob_rnn = config.keep_prob_rnn
+        self.start_learning_rate = config.start_learning_rate
+        self.dense_size = config.dense_size
+        self.rnn_layer_size = config.rnn_layer_size
+        self.is_training = config.is_training
+        self.net = None
+        # Build the net
+        if self.is_training is True:
+            name_prefix = "train"
+        else:
+            name_prefix = "test"
+
+        with tf.variable_scope(name_prefix + "_inputs"):
+            self.input = tf.placeholder(tf.float32, [self.batch_size, self.time_steps, self.input_size],
+                                        name='xs')
+            self.ys = tf.placeholder(tf.float32, [self.batch_size, self.time_steps, self.output_size], name='ys')
+
+        with tf.variable_scope("configure"):
+            self.global_step = tf.Variable(0, name="global_step", trainable=False, dtype=tf.int32)
+            self.max_accuracy = tf.Variable(0, name="max_accuracy", trainable=False, dtype=tf.float32)
+            self.keep_prob_rnn_tf = tf.placeholder(tf.float32, name="keep_prob_rnn")
+            self.keep_prob_dense_tf = tf.placeholder(tf.float32, name="keep_prob_rnn_dense_tf")
+            if self.is_training is True:
+                self.learning_rate = tf.placeholder(tf.float32, name="learning_rate")
+            if self.is_training is True:
+                tf.summary.scalar('lr', self.learning_rate)
+        with tf.name_scope('input_fc'):
+            with tf.variable_scope("fc_variable"):
+                # sensor 1
+                self.net = self.reshape_to_flat(self.input, [-1, self.input_size])
+
+                self.net = self.add_fc_layer(self.net, self.dense_size, "fc_in_1",
+                                             None,
+                                             act_fn=tf.nn.relu,
+                                             reuse=(not self.is_training and IS_TRAINING == 1))
+
+                # self.net = self.add_fc_layer(self.net, self.dense_size, "fc_in_2",
+                #                              self.keep_prob_dense_tf,
+                #                              act_fn=tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
+
+                self.net = self.add_fc_layer(self.net, self.dense_size, "fc_in_rnn",
+                                             self.keep_prob_dense_tf,
+                                             act_fn=tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
+
+        with tf.name_scope('rnn'):
+            # with tf.variable_scope("split_rnn_variable_sensor_1") as scope:
+            self.cell_init_state, self.net, self.cell_final_state = \
+                self.add_rnn_cell(self.reshape_to_three_d(self.net, [-1, self.time_steps, self.rnn_cell_size]),
+                                  not self.is_training and IS_TRAINING == 1)
+
+        with tf.name_scope('output_fc'):
+            with tf.variable_scope("fc_variable"):
+                self.net = self.reshape_to_flat(self.net, [-1, self.rnn_cell_size])
+                self.net = self.add_fc_layer(self.net, self.dense_size, "fc_o_1", self.keep_prob_dense_tf,
+                                             tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
+                # self.net = self.add_fc_layer(self.net, self.dense_size, "fc_o_2", self.keep_prob_dense_tf,
+                #                              tf.nn.relu, reuse=not self.is_training and IS_TRAINING == 1)
+                self.outputs = self.add_fc_layer(self.net, self.output_size, "fc_out", self.keep_prob_dense_tf,
+                                                 None, reuse=not self.is_training and IS_TRAINING == 1)
         with tf.name_scope("correct_pred"):
-            self.pred = tf.arg_max(self.pred, 1)
-            # self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
-            # with tf.name_scope("reset_state"):
-            #     self.reset_state = tf.assign(self.cell_init_state, self.cell_zero_state)
-            # with tf.name_scope("process_val"):
-            #     self.switch_val_state = tf.assign(self.cell_init_state, self.cell_zero_state_val)
+            self.correct_pred = tf.arg_max(self.outputs, 1)
+        if self.is_training is False:
+            return
+        with tf.name_scope('cost'):
+            with tf.variable_scope(tf.get_variable_scope(), reuse=not self.is_training):
+                losses = tc.legacy_seq2seq.sequence_loss(
+                    [tf.reshape(self.outputs, [-1, self.output_size], name="reshape_pred")],
+                    [tf.reshape(self.ys, [-1, self.output_size], name="reshape_target")],
+                    [tf.ones([self.output_size, self.batch_size * self.time_steps], dtype=tf.float32)],
+                    average_across_timesteps=True,
+                    softmax_loss_function=tf.nn.softmax_cross_entropy_with_logits
+                )
+            with tf.name_scope('average_cost'):
+                self.cost = tf.div(
+                    tf.reduce_sum(losses, name='losses_sum'),
+                    self.batch_size,
+                    name='average_cost')
+                tf.summary.scalar('cost', self.cost)
 
-    def add_input_layer(self):
-        l_in_x = tf.reshape(self.xs, [-1, self._input_size], name="2_2D")
-        Ws_in = self._weight_variable([self._input_size, self._cell_size])
-        bs_in = self._bias_variable([self._cell_size, ])
+        with tf.name_scope("train"):
+            self.train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.cost)
+            self.increase_step = self.global_step.assign_add(1)
 
-        with tf.name_scope("Wx_plus_b"):
-            l_in_y = tf.matmul(l_in_x, Ws_in) + bs_in
-            self.l_in_y_shaped = tf.reshape(l_in_y, [-1, self._n_steps, self._cell_size], name="2_3D")
-            # first_hidden_layer = (tc.relu(l_in_y, 200))
-            # second_hidden_layer = (tc.relu(first_hidden_layer, 200))
-            # third_hidden_layer = tf.nn.dropout(tc.relu(second_hidden_layer, self._cell_size), self.keep_prob)
-            # self.third_hidden_layer_y = tf.reshape(third_hidden_layer, [-1, self._n_steps, self._cell_size], name="2_3D")
+    def reshape_to_flat(self, inputs, shape):
+        return tf.reshape(inputs, shape=shape, name="2_2D")
 
-    def add_cell(self):
-        lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(self._cell_size, forget_bias=1.0, state_is_tuple=True)
-        lstm_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob)
-        self.stacked_lstm = rnn_cell.MultiRNNCell([lstm_cell] * 5,
-                                                  state_is_tuple=True)
-        with tf.name_scope('initial_state'):
-            self.cell_init_state = self.stacked_lstm.zero_state(self._batch_size,
-                                                                dtype=tf.float32)
-            self.cell_init_state_val = self.stacked_lstm.zero_state(1,
-                                                                    dtype=tf.float32)
+    def reshape_to_three_d(self, inputs, shape):
+        return tf.reshape(inputs, shape=shape, name="2_3D")
 
-        self.cell_outputs, self.cell_final_state = tf.nn.dynamic_rnn(
-            self.stacked_lstm, self.l_in_y_shaped, initial_state=self.cell_init_state, time_major=False)
+    def add_fc_layer(self, inputs, outputs, name, keep_prob=None, act_fn=None, reuse=None):
+        with tf.variable_scope(name, reuse=reuse) as scope:
+            fc = tc.layers.fully_connected(inputs, outputs, activation_fn=act_fn,
+                                           weights_initializer=tc.layers.xavier_initializer(),
+                                           scope=scope, reuse=reuse)
+            if self.is_training and keep_prob is not None:
+                fc = tf.nn.dropout(fc, keep_prob)
+        return fc
 
-    def add_output_layer(self):
-        l_out_x = tf.reshape(self.cell_outputs, [-1, self._cell_size], name='2_2D')
-        fourth_hidden_layer = tf.nn.dropout(tc.relu(l_out_x, self._cell_size), self.keep_prob)
-        # fifth_hidden_layer = tf.nn.dropout(tc.relu(fourth_hidden_layer, self._cell_size), self.keep_prob)
-        Ws_out = self._weight_variable([self._cell_size, self._output_size])
-        bs_out = self._bias_variable([self._output_size, ])
-        # shape = (batch * steps, output_size)
-        with tf.name_scope('Wx_plus_b'):
-            self.pred = tf.matmul(fourth_hidden_layer, Ws_out) + bs_out
+    def add_rnn_cell(self, inputs, reuse=None):
 
-    def comput_cost(self):
-        losses = tf.nn.seq2seq.sequence_loss(
-            [tf.reshape(self.pred, [-1, 2], name="reshape_pred")],
-            [tf.reshape(self.ys, [-1, 2], name="reshape_target")],
-            [tf.ones([2, self._batch_size * self._n_steps], dtype=tf.float32)],
-            average_across_timesteps=True,
-            softmax_loss_function=tf.nn.softmax_cross_entropy_with_logits
-        )
-        with tf.name_scope('average_cost'):
-            self.cost = tf.div(
-                tf.reduce_sum(losses, name='losses_sum'),
-                self._batch_size,
-                name='average_cost')
-            tf.summary.scalar('cost', self.cost)
-
-    def _weight_variable(self, shape, name='weights'):
-        initializer = tf.random_normal_initializer(mean=0., stddev=1., )
-        return tf.get_variable(shape=shape, initializer=initializer, name=name)
-
-    def _bias_variable(self, shape, name='biases'):
-        initializer = tf.constant_initializer(0.1)
-        return tf.get_variable(name=name, shape=shape, initializer=initializer)
+        with tf.variable_scope(tf.get_variable_scope(), reuse=reuse) as scope:
+            lstm_cell = tc.rnn.BasicLSTMCell(self.rnn_cell_size, forget_bias=1.0, state_is_tuple=True)
+            lstm_cell = tc.rnn.DropoutWrapper(lstm_cell, output_keep_prob=self.keep_prob_rnn_tf)
+            stacked_lstm = tc.rnn.MultiRNNCell([lstm_cell] * self.rnn_layer_size)
+            cell_init_state = stacked_lstm.zero_state(self.batch_size,
+                                                      dtype=tf.float32)
+            cell_outputs, cell_final_state = tf.nn.dynamic_rnn(
+                stacked_lstm, inputs, initial_state=cell_init_state, time_major=False)
+        return cell_init_state, cell_outputs, cell_final_state
 
 
-def eval_accuracy(session, data_set_instance):
+def eval_accuracy(sess, model, data_set_instance, val_init_state, mode=1):
     predict = []
+    batch_x, _, _ = data_set_instance.get_batch()
+    if mode == 2:
+        feed_dict = {
+            model.input: batch_x[:, :, :24],
+            model.keep_prob_rnn_tf: 1,
+            model.keep_prob_dense_tf: 1,
+            model.cell_init_state: val_init_state,
+        }
+        pred, val_state = sess.run(
+            [model.correct_pred, model.cell_final_state], feed_dict=feed_dict)
+        result, percent = data_set_instance.evaluate(pred.tolist())
+        print("GE: %f,Accuracy:%f" % (result, percent))
+        return predict
     for j in range(len(data_set_instance._inputs)):
         if j == 0:
             feed_dict = {
-                model.xs: np.reshape(data_set_instance._inputs[j], [1, 1, 22]),
+                model.input: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, :],
+                model.keep_prob_rnn_tf: 1,
+                model.keep_prob_dense_tf: 1,
                 model.cell_init_state: val_init_state,
-                model.keep_prob: 1
             }
         else:
             feed_dict = {
-                model.xs: np.reshape(data_set_instance._inputs[j], [1, 1, 22]),
-                model.cell_init_state: valid_state,
-                model.keep_prob: 1
+                model.input: (np.reshape(data_set_instance._inputs[j], [1, 1, 24]))[:, :, :],
+                model.keep_prob_rnn_tf: 1,
+                model.keep_prob_dense_tf: 1,
+                model.cell_init_state: val_state,
             }
-        pred, valid_state = sess.run([model.pred, model.cell_final_state], feed_dict=feed_dict)
+        pred, outpre, val_state = sess.run(
+            [model.correct_pred, model.outputs, model.cell_final_state], feed_dict=feed_dict)
         predict.append(pred[0])
     result, percent = data_set_instance.evaluate(predict)
-    print("%f,%f" % (result, percent))
+    print("GE: %f,Accuracy:%f,Highest:%f" % (result, percent, model.max_accuracy.eval(sess)))
+    if percent > model.max_accuracy.eval(sess) and IS_TRAINING == 1:
+        sess.run(model.max_accuracy.assign(float(percent)))
+        saver.save(sess, "tmp/highest/drnn/model.ckpt", global_step=model.global_step)
+        print ("MAX:Accuracy")
     return predict
 
 
-def run_eval():
-    print(test_data.cal_worst_best())
-    predict = eval_accuracy(sess, test_data)
-    print(predict)
-
-
-def run_training():
+def run_train(sess, model, train_data):
     epoch = 0
     epoch_cost = 0
     epoch_count = 0
-    while epoch < 1000:
+    train_init_state = session.run(model.cell_init_state)
+    state = None
+    merged = tf.summary.merge_all()
+    writer = tf.summary.FileWriter("logs/drnn", sess.graph)
+    previous_losses = []
+
+    lr = model.start_learning_rate
+    while epoch < 10000:
         batch_x, batch_y, is_reset = train_data.get_batch()
         if epoch == 0 and epoch_count == 0:
             feed_dict = {
-                model.xs: batch_x,
+                model.input: batch_x[:, :, :24],
                 model.ys: batch_y,
-                model.keep_prob: 0.2
+                model.keep_prob_rnn_tf: model.keep_prob_rnn,
+                model.keep_prob_dense_tf: model.keep_prob_dense,
+                model.learning_rate: lr
             }
         else:
             if is_reset == 1:
-                print("epoch_count %d, cost:%.4f, %d" % (
-                    epoch_count, round(epoch_cost / epoch_count, 4), train_data._start_cursor))
-                saver.save(sess, "tmp/model.ckpt")
+                print("epoch: %d, cost:%.4f, learning_rate:%f" % (
+                    epoch, round(epoch_cost / epoch_count, 4), lr))
+                writer.add_summary(cost_summary, model.global_step.eval(sess))
+                if len(previous_losses) > 4.0 and epoch_cost > max(previous_losses[-5:]) and lr > 0.00002:
+                    print ("decay learning rate!!!")
+                    lr /= 2.0
+                previous_losses.append(epoch_cost)
                 epoch += 1
                 epoch_count = 0
                 epoch_cost = 0
                 feed_dict = {
-                    model.xs: batch_x,
+                    model.input: batch_x[:, :, :24],
                     model.ys: batch_y,
+                    model.keep_prob_rnn_tf: model.keep_prob_rnn,
+                    model.keep_prob_dense_tf: model.keep_prob_dense,
                     model.cell_init_state: train_init_state,
-                    model.keep_prob: 0.2
+                    model.learning_rate: lr
                 }
             else:
                 feed_dict = {
-                    model.xs: batch_x,
+                    model.input: batch_x[:, :, :24],
                     model.ys: batch_y,
+                    model.keep_prob_rnn_tf: model.keep_prob_rnn,
+                    model.keep_prob_dense_tf: model.keep_prob_dense,
                     model.cell_init_state: state,
-                    model.keep_prob: 0.2
+                    model.learning_rate: lr
                 }
-        _, cost, state, pred = sess.run(
-            [model.train_op, model.cost, model.cell_final_state, model.pred],
+        _, cost, state, pred, cost_summary, lr, g_step = sess.run(
+            [model.train_op, model.cost, model.cell_final_state,
+             model.outputs, merged, model.learning_rate, model.increase_step],
             feed_dict=feed_dict
         )
+        print ("Global_Step:%d" % g_step)
         epoch_cost += cost
         epoch_count += 1
-        if epoch % 10 == 0 and is_reset == 1:
-            eval_accuracy(sess, test_data)
-            # count = 0
-            # true = 0
-            # for j in range(len(test_data._inputs)):
-            #     if j == 0:
-            #         feed_dict = {
-            #             model.xs: np.reshape(test_data._inputs[j], [1, 1, 22]),
-            #             model.cell_init_state: val_init_state
-            #         }
-            #     else:
-            #         feed_dict = {
-            #             model.xs: np.reshape(test_data._inputs[j], [1, 1, 22]),
-            #             model.cell_init_state: valid_state
-            #         }
-            #     pred, valid_state = sess.run([model.pred, model.cell_final_state], feed_dict=feed_dict)
-            #     if test_data._outputs[j][pred[0]] == 1:
-            #         true += 1
-            #     count += 1
-            # print("%d,%d,%f" % (true, count, true / count))
+        if epoch % 1 == 0 and is_reset == 1:
+            eval_accuracy(sess, drnn_fusion_model_evl, test_data_set, train_init_state, 1)
+
+
+def run_eval(sess, model, test_data, train_init_state=None):
+    print(test_data.cal_worst_best())
+    if train_init_state is None:
+        train_init_state = session.run(model.cell_init_state)
+    predict = eval_accuracy(sess, model, test_data, train_init_state)
+    print(predict)
 
 
 if __name__ == "__main__":
-    model = LSTMRNN(TIME_STEPS, INPUT_SIZE, OUTPUT_SIZE, CELL_SIZE, BATCH_SIZE)
-    sess = tf.Session()
-    merged = tf.summary.merge_all()
-    writer = tf.summary.FileWriter("logs", sess.graph)
-    saver = tf.train.Saver()
+    with tf.variable_scope('model') as scope:
+        if IS_TRAINING == 1:
+            train_config = TrainConfig()
+            drnn_fusion_model = DRNNFusion(train_config)
+            drnn_fusion_model_evl = DRNNFusion(TestConfig())
+            _, test_data_set = data_util.prepare_data(drnn_fusion_model_evl.batch_size,
+                                                      drnn_fusion_model_evl.time_steps)
+            train_data_set, _ = data_util.prepare_data(drnn_fusion_model.batch_size,
+                                                       drnn_fusion_model.time_steps)
+        else:
+            test_config = TestConfig()
+            drnn_fusion_model = DRNNFusion(test_config)
+            train_data_set, test_data_set = data_util.prepare_data(drnn_fusion_model.batch_size,
+                                                                   drnn_fusion_model.time_steps)
+        session = tf.Session()
 
-    train_data, test_data = data_util.prepare_data(BATCH_SIZE, TIME_STEPS)
-    init = tf.global_variables_initializer()
-    sess.run(init)
-    train_init_state = sess.run(model.cell_init_state)
-    val_init_state = sess.run(model.cell_init_state_val)
-    ckpt = tf.train.get_checkpoint_state('tmp/')
+        saver = tf.train.Saver()
 
-    if ckpt and ckpt.model_checkpoint_path:
-        saver.restore(sess, ckpt.model_checkpoint_path)
-        print('Checkpoint found')
-    else:
-        print('No checkpoint found')
-    if IS_TRAINING == 0:
-        run_eval()
-    else:
-        run_training()
+        init = tf.global_variables_initializer()
+        session.run(init)
+        print (drnn_fusion_model.time_steps)
+        ckpt = tf.train.get_checkpoint_state('tmp/highest/drnn')
+
+        if ckpt and ckpt.model_checkpoint_path:
+            saver.restore(session, ckpt.model_checkpoint_path)
+            print('Checkpoint found')
+        else:
+            print('No checkpoint found')
+        if IS_TRAINING == 1:
+            run_train(session, drnn_fusion_model, train_data_set)
+        else:
+            run_eval(session, drnn_fusion_model, test_data_set)

@@ -10,7 +10,21 @@ train_data, test_data = data_util.prepare_data(1, 1)
 # print(test_data.best_error_mean, test_data.worst_error_mean, test_data._s1_error_mean, test_data._s2_error_mean)
 # print(test_data.get_batch())
 # print(test_data.get_batch())
-print (train_data.cal_worst_best())
+x_val = test_data._outputs;
+length = np.shape(x_val)[0]
+sum_mean_error = 0
+for epoch in range(100):
+    randmon_y=np.random.randint(2, size=length)
+    error,_=test_data.evaluate(randmon_y)
+    print (error)
+    sum_mean_error = sum_mean_error + error
+
+print("mean:%f" % (sum_mean_error/100))
+print("accuracy:%f" % (1-(sum_mean_error/100-test_data.best_error_mean)/
+                       (test_data.worst_error_mean-test_data.best_error_mean)))
+print("B:%f,W:%f" %(test_data.best_error_mean,test_data.worst_error_mean))
+# print length
+# print ("Best:%f,Worst:%f"%(test_data.best_error_mean,test_data.worst_error_mean))
 # print (np.shape(train_data._inputs))
 # is_reset = 0
 # while is_reset == 0:
